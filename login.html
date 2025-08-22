@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign in • Sync</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="shortcut icon" href="/favicon.ico">
+  <meta name="theme-color" content="#000000">
+
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    :root {
+      --primary-color: #4cfa9d;
+      --primary-color-dark: #35e089;
+      --bg-dark: #050505;
+      --bg-panel: #121212;
+      --bg-card: #1a1a1a;
+      --bg-input: #1f1f1f;
+      --border-color: #2d2d2d;
+      --text-primary: #e0e0e0;
+      --text-secondary: #8b949e;
+      --danger: #ff6b6b;
+    }
+    html, body {
+      height: 100%; margin: 0; font-family: 'Poppins', sans-serif; color: var(--text-primary);
+      background: linear-gradient(135deg, #000000, var(--bg-dark));
+    }
+    /* Ensure padding/border are included in element width to prevent overflow */
+    *, *::before, *::after { box-sizing: border-box; }
+    .container {
+      min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+    .card {
+      width: 100%; max-width: 420px; background: var(--bg-card); border: 1px solid var(--border-color);
+      border-radius: 16px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    }
+    h1 { font-size: 1.5rem; margin: 0 0 0.25rem 0; display: flex; align-items: center; gap: .5rem; }
+    p.subtitle { margin: 0 0 1.25rem 0; color: var(--text-secondary); font-size: .95rem; }
+    form { display: flex; flex-direction: column; gap: .75rem; }
+    input[type="email"], input[type="password"], input[type="text"] {
+      width: 100%; max-width: 100%; padding: 12px 14px; background: var(--bg-input); color: var(--text-primary);
+      border: 1px solid var(--border-color); border-radius: 10px; outline: none;
+    }
+    input::placeholder { color: #6f7782; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+    .btn { cursor: pointer; border: none; padding: 12px 14px; border-radius: 10px; font-weight: 600; width: 100%; max-width: 100%; display: inline-block; }
+    .btn-primary { background: var(--primary-color); color: #000; }
+    .btn-primary:active { transform: translateY(1px); }
+    .link { background: none; color: var(--text-secondary); font-weight: 500; text-decoration: underline; cursor: pointer; border: none; padding: 0; }
+    .error { color: var(--danger); min-height: 20px; font-size: .9rem; margin-top: .25rem; }
+    .fine { color: var(--text-secondary); font-size: .9rem; }
+    .shake { animation: shake .25s linear 2; }
+    @keyframes shake { 0% {transform: translateX(0)} 25% {transform: translateX(-4px)} 75% {transform: translateX(4px)} 100% {transform: translateX(0)} }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card" id="auth-card">
+      <h1><i class="fas fa-user-shield"></i> Sign in</h1>
+      <p class="subtitle">Access your account to continue.</p>
+
+      <!-- Login Form -->
+      <form id="login-form" autocomplete="on">
+        <input type="email" id="user-identifier" name="user_identifier" autocomplete="username" placeholder="Email" required>
+        <input type="password" id="user-passkey" name="user_passkey" autocomplete="current-password" placeholder="Password" required>
+        <div class="row">
+          <label style="display:flex;align-items:center;gap:.5rem;color:var(--text-secondary);">
+            <input type="checkbox" id="remember-me" checked> Remember me
+          </label>
+          <button type="button" class="link" id="forgot-password">Forgot password?</button>
+        </div>
+        <button type="submit" class="btn btn-primary" id="login-button"><i class="fas fa-sign-in-alt" style="margin-right:.4rem"></i>Login</button>
+      </form>
+
+      <div id="auth-error" class="error"></div>
+
+      <p class="fine" style="margin-top: 8px;">Don't have an account? <button class="link" id="show-register">Create one</button></p>
+
+      <!-- Register Form -->
+      <form id="register-form" class="hidden" autocomplete="on">
+        <input type="text" id="user-display" name="user_display" autocomplete="name" placeholder="Name" required>
+        <input type="email" id="user-contact" name="user_contact" autocomplete="email" placeholder="Email" required>
+        <input type="password" id="user-secret" name="user_secret" autocomplete="new-password" placeholder="Password" required>
+        <input type="password" id="user-verify" name="user_verify" autocomplete="new-password" placeholder="Confirm Password" required>
+        <button type="submit" class="btn btn-primary" id="register-button"><i class="fas fa-user-plus" style="margin-right:.4rem"></i>Create Account</button>
+      </form>
+      <p class="fine hidden" id="back-to-login-wrap">Already have an account? <button class="link" id="back-to-login">Back to login</button></p>
+
+    </div>
+  </div>
+
+  <script>
+    // IMPORTANT: Keep these in sync with index.html
+    const SUPABASE_URL = 'https://wivtgqflsutzqexuigyy.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpdnRncWZsc3V0enFleHVpZ3l5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxNTk0NDQsImV4cCI6MjA3MDczNTQ0NH0.QqnyKKgJm55lKyrzCaxIOP4mr79Q6eqRyJ5T5oVqvhs';
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const authCard = document.getElementById('auth-card');
+    const errorEl = document.getElementById('auth-error');
+
+    const loginForm = document.getElementById('login-form');
+    const loginEmail = document.getElementById('user-identifier');
+    const loginPassword = document.getElementById('user-passkey');
+    const loginButton = document.getElementById('login-button');
+    const rememberMe = document.getElementById('remember-me');
+
+    const forgotPasswordBtn = document.getElementById('forgot-password');
+
+    const showRegisterBtn = document.getElementById('show-register');
+    const registerForm = document.getElementById('register-form');
+    const registerName = document.getElementById('user-display');
+    const registerEmail = document.getElementById('user-contact');
+    const registerPassword = document.getElementById('user-secret');
+    const registerPasswordConfirm = document.getElementById('user-verify');
+    const registerButton = document.getElementById('register-button');
+    const backToLoginWrap = document.getElementById('back-to-login-wrap');
+    const backToLoginBtn = document.getElementById('back-to-login');
+
+    function setAuthError(msg) {
+      errorEl.textContent = msg || '';
+      if (msg) {
+        authCard.classList.remove('shake');
+        void authCard.offsetWidth;
+        authCard.classList.add('shake');
+      }
+    }
+
+    function showRegister() {
+      registerForm.classList.remove('hidden');
+      backToLoginWrap.classList.remove('hidden');
+      loginForm.classList.add('hidden');
+      showRegisterBtn.parentElement.classList.add('hidden');
+      setAuthError('');
+    }
+    function showLogin() {
+      registerForm.classList.add('hidden');
+      backToLoginWrap.classList.add('hidden');
+      loginForm.classList.remove('hidden');
+      showRegisterBtn.parentElement.classList.remove('hidden');
+      setAuthError('');
+    }
+
+    showRegisterBtn.addEventListener('click', showRegister);
+    backToLoginBtn.addEventListener('click', showLogin);
+
+    // Login
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      setAuthError('');
+      loginButton.disabled = true;
+      const prev = loginButton.innerHTML;
+      loginButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Logging in...';
+      
+      try {
+        // 1. First get the user profile to verify credentials
+        const { data: profile, error: profileError } = await supabaseClient
+          .from('user_profiles')
+          .select('user_secret')
+          .eq('user_contact', loginEmail.value.trim())
+          .maybeSingle();
+          
+        if (profileError) throw profileError;
+        if (!profile) {
+          throw new Error('Invalid email or password');
+        }
+        
+        // 2. Verify the password matches
+        if (profile.user_secret !== loginPassword.value) {
+          throw new Error('Invalid email or password');
+        }
+        
+        // 3. If we get here, password matches - sign in with Supabase Auth
+        const { data, error } = await supabaseClient.auth.signInWithPassword({
+          email: loginEmail.value.trim(),
+          password: loginPassword.value,
+        });
+        
+        if (error) throw error;
+        
+        // 4. Update last login time
+        await supabaseClient
+          .from('user_profiles')
+          .update({ 
+            last_login: new Date().toISOString()
+          })
+          .eq('user_contact', loginEmail.value.trim());
+        
+        // Set session preferences
+        if (rememberMe.checked) {
+          localStorage.setItem('rememberMe', 'true');
+        } else {
+          localStorage.setItem('rememberMe', 'false');
+          sessionStorage.setItem('sessionActive', 'true');
+        }
+        
+        // Redirect to dashboard
+        window.location.href = 'index.html';
+        
+      } catch (err) {
+        console.error('Login error:', err);
+        setAuthError(err.message || 'Login failed. Please check your credentials.');
+      } finally {
+        loginButton.disabled = false;
+        loginButton.innerHTML = prev;
+      }
+    });
+
+    // Register
+    registerForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      setAuthError('');
+      registerButton.disabled = true;
+      const prev = registerButton.innerHTML;
+      registerButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating account...';
+
+      // Basic validation
+      if (registerPassword.value !== registerPasswordConfirm.value) {
+        setAuthError('Passwords do not match');
+        registerButton.disabled = false;
+        registerButton.innerHTML = prev;
+        return;
+      }
+
+      try {
+        // 1. First check if email is already in use
+        const { data: existingUser, error: checkError } = await supabaseClient
+          .from('user_profiles')
+          .select('id')
+          .eq('user_contact', registerEmail.value.trim())
+          .maybeSingle();
+          
+        if (existingUser) {
+          throw new Error('Email is already registered');
+        }
+        
+        // 2. Create the user in Supabase Auth
+        const { data: authData, error: signUpError } = await supabaseClient.auth.signUp({
+          email: registerEmail.value.trim(),
+          password: registerPassword.value,
+          options: {
+            data: {
+              name: registerName.value.trim(),
+              password: registerPassword.value  // Store password in user metadata
+            },
+            emailRedirectTo: window.location.origin
+          }
+        });
+
+        if (signUpError) throw signUpError;
+        
+        // 3. The trigger will create the user profile with the password
+        setAuthError('Registration successful! Please check your email to confirm your account.');
+        showLogin();
+        
+      } catch (err) {
+        console.error('Registration error:', err);
+        setAuthError(err.message || 'Registration failed. Please try again.');
+      } finally {
+        registerButton.disabled = false;
+        registerButton.innerHTML = prev;
+      }
+    });
+
+    // Forgot password
+    forgotPasswordBtn.addEventListener('click', async () => {
+      setAuthError('');
+      const email = (loginEmail.value || registerEmail.value || '').trim();
+      if (!email) {
+        setAuthError('Please enter your email address');
+        return;
+      }
+
+      try {
+        // Check if email exists in auth.users table
+        const { data: authData, error: authError } = await supabaseClient.auth.admin.listUsers();
+        if (authError) throw authError;
+        
+        const userExists = authData.users.some(user => user.email === email);
+        if (!userExists) {
+          setAuthError('No account found with this email address');
+          return;
+        }
+
+        // Send password reset email
+        const { error: resetError } = await supabaseClient.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/reset-password.html`,
+        });
+
+        if (resetError) throw resetError;
+        setAuthError('Password reset email sent. Please check your inbox.');
+      } catch (err) {
+        console.error('Password reset error:', err);
+        setAuthError(err.message || 'Error sending password reset email');
+      }
+    });
+
+    // If already logged in, go to app
+    (async function redirectIfAuthenticated() {
+      try {
+        const { data } = await supabaseClient.auth.getSession();
+        if (data?.session) {
+          window.location.href = 'index.html';
+        }
+      } catch (_) { /* ignore */ }
+    })();
+  </script>
+</body>
+</html>
